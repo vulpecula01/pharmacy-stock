@@ -1,0 +1,29 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up()
+{
+    Schema::table('dispensing_records', function (Blueprint $table) {
+        // เพิ่มคอลัมน์สำหรับเก็บ ID ของล็อตยา
+        $table->unsignedBigInteger('medicine_stock_id')->nullable()->after('medicine_id');
+    });
+}
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('dispensing_records', function (Blueprint $table) {
+            //
+        });
+    }
+};

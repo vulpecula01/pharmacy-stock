@@ -1,0 +1,393 @@
+@extends('layouts.app')
+
+@section('title', 'รับยาเข้าคลังใหญ่ - MediStock')
+
+@section('content')
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+
+<div class="max-w-2xl mx-auto mt-10 p-8 bg-white shadow-xl rounded-2xl border border-gray-100">
+    <div class="flex items-center gap-3 mb-8">
+        <div class="bg-green-100 p-3 rounded-xl text-green-600">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+            </svg>
+        </div>
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800">รับยาเข้าคลังใหญ่</h2>
+            <p class="text-sm text-gray-500">สแกนบาร์โค้ดเพื่อเพิ่มยาใหม่หรือเพิ่มสต็อกเดิม</p>
+        </div>
+    </div>
+
+    {{-- 🟢 แสดงข้อความแจ้งเตือน Error ชัดๆ หาก Validation ไม่ผ่าน --}}
+    @if($errors->any())
+    <div class="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-xl text-red-700 text-sm font-semibold space-y-1">
+        <div class="flex items-center gap-2 mb-1 text-red-800 font-bold">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>กรุณาตรวจสอบข้อมูลให้ครบถ้วน:</span>
+        </div>
+        <ul class="list-disc list-inside text-xs pl-2">
+            @foreach ($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+    </div>
+    @endif
+
+    @if(session('error'))
+    <div class="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-xl text-red-700 text-sm font-semibold flex items-center gap-2">
+        <i class="fas fa-exclamation-circle text-red-500"></i>
+        <span>{{ session('error') }}</span>
+    </div>
+    @endif
+
+    {{-- แผงแสดงข้อมูลสต็อกเดิม --}}
+    <div id="stock-info-panel" class="hidden mb-6 animate-in fade-in duration-300">
+        <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 text-center">
+            <p class="text-[10px] font-bold text-blue-600 uppercase mb-1">สต็อกคลังใหญ่เดิมในระบบ</p>
+            <p id="display_master" class="text-3xl font-black text-blue-700">0</p>
+        </div>
+    </div>
+
+    <form action="{{ route('receives.store') }}" method="POST" class="space-y-6" id="receive-form">
+        @csrf
+        
+        {{-- Hidden Input สำหรับ lot_number --}}
+        <input type="hidden" name="lot_number" id="lot_number_hidden" value="">
+
+        {{-- โซนข้อมูลบาร์โค้ดและวันที่รับเข้า --}}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
+            <div class="md:col-span-2 relative">
+                <label class="block text-sm font-bold text-gray-700 mb-2">สแกนบาร์โค้ด / รหัสยา</label>
+                <input type="text" name="barcode" id="barcode_input" 
+                    class="w-full border-2 border-gray-200 p-4 rounded-xl focus:border-green-500 focus:ring-4 focus:ring-green-100 outline-none transition-all text-lg font-mono" 
+                    placeholder="คลิกที่นี่แล้วสแกน..." autofocus required autocomplete="off" value="{{ old('barcode') }}">
+                <div id="loading-spinner" class="absolute right-4 top-11 hidden">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                </div>
+            </div>
+            {{-- วันที่รับยาเข้า stock --}}
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">วันที่รับยาเข้า</label>
+                <input type="date" name="receive_date" id="receive_date_input"
+                    class="w-full border-2 border-gray-200 p-4 rounded-xl focus:border-green-500 outline-none transition-all font-bold text-gray-600" required>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="md:col-span-1">
+                <label class="block text-sm font-bold text-gray-700 mb-2">ชื่อยา</label>
+                <input type="text" name="name" id="name_input"
+                    class="w-full border-2 border-gray-200 p-4 rounded-xl focus:border-green-500 outline-none transition-all" 
+                    placeholder="ชื่อยา..." required value="{{ old('name') }}">
+                <span id="status-msg" class="text-xs mt-1 block"></span>
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">หน่วยนับ</label>
+                <select name="unit_name" id="unit_select" class="w-full border-2 border-gray-200 p-4 rounded-xl focus:border-green-500 outline-none transition-all bg-white font-bold" required>
+                    <option value="">-- เลือกหน่วย --</option>
+                    @isset($units)
+                        @foreach($units as $u)
+                            <option value="{{ $u->name }}" {{ old('unit_name') == $u->name ? 'selected' : '' }}>{{ $u->name }}</option>
+                        @endforeach
+                    @endisset
+                </select>
+            </div>
+        </div>
+
+        <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2">หมวดหมู่ (Category)</label>
+            <select name="category" id="category_select" class="w-full border-2 border-gray-200 p-4 rounded-xl focus:border-green-500 outline-none transition-all bg-white font-bold" required>
+                <option value="">-- เลือกหมวดหมู่ --</option>
+                @isset($categories)
+                    @foreach($categories as $cat)
+                        {{-- 💡 ปรับปรุงตรงนี้ให้ value เป็น $cat->name ให้สัมพันธ์กับฝั่งฐานข้อมูลที่สแกนเจอ --}}
+                        <option value="{{ $cat->name }}" {{ old('category') == $cat->name ? 'selected' : '' }}>{{ $cat->name }}</option>
+                    @endforeach
+                @endisset
+            </select>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">บริษัทผู้จำหน่าย</label>
+                <input type="text" name="company_name" id="company_input"
+                    class="w-full border-2 border-gray-200 p-4 rounded-xl focus:border-green-500 outline-none transition-all" 
+                    placeholder="ระบุบริษัท" required value="{{ old('company_name') }}">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-red-600 mb-2 flex justify-between">
+                    <span>วันหมดอายุ (Expire Date)</span>
+                    <button type="button" id="btn-view-lots" class="text-blue-500 hover:underline text-xs hidden">
+                        <i class="fas fa-history"></i> ดูประวัติ Lot เดิม
+                    </button>
+                </label>
+                <input type="date" name="expire_date" id="expire_input"
+                    class="w-full border-2 border-red-100 p-4 rounded-xl focus:border-red-500 outline-none transition-all" required value="{{ old('expire_date') }}">
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-bold text-blue-700 mb-2">ราคาซื้อต่อหน่วย (฿)</label>
+                <input type="number" name="price_per_unit" id="price_input" step="0.01"
+                    class="w-full border-2 border-blue-100 p-4 rounded-xl focus:border-blue-500 outline-none transition-all font-bold text-blue-600 text-center" 
+                    placeholder="0.00" min="0" required value="{{ old('price_per_unit') }}">
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">จำนวนที่รับเข้า</label>
+                <input type="number" name="quantity" id="quantity_input"
+                    class="w-full border-2 border-gray-200 p-4 rounded-xl focus:border-green-500 outline-none transition-all text-2xl font-bold text-center text-green-600" 
+                    min="1" value="1" required>
+            </div>
+        </div>
+
+        <div class="bg-blue-50 p-6 rounded-2xl border border-blue-100">
+            <h3 class="text-blue-700 font-bold text-sm mb-4 flex items-center gap-2">
+                <i class="fas fa-bell"></i> ตั้งค่าเกณฑ์การแจ้งเตือน (Alert Settings)
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">เกณฑ์ขั้นต่ำ (MIN STOCK)</label>
+                    <input type="number" name="min_stock" id="min_input"
+                        class="w-full border-2 border-blue-100 p-4 rounded-xl focus:border-blue-500 outline-none transition-all" 
+                        placeholder="เช่น 10" min="0" value="{{ old('min_stock') }}">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-2">เกณฑ์สูงสุด (MAX STOCK)</label>
+                    <input type="number" name="max_stock" id="max_input"
+                        class="w-full border-2 border-blue-100 p-4 rounded-xl focus:border-blue-500 outline-none transition-all" 
+                        placeholder="เช่น 100" min="0" value="{{ old('max_stock') }}">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-4 pt-4">
+            <a href="{{ route('transfers.index') }}" 
+                class="flex-1 text-center py-4 border-2 border-gray-200 rounded-2xl font-bold text-gray-500 hover:bg-gray-50 transition-all">
+                ยกเลิก
+            </a>
+            <button type="submit" id="submit-btn"
+                class="flex-1 bg-green-600 text-white py-4 rounded-2xl font-bold hover:bg-green-700 shadow-lg shadow-green-200 transform hover:-translate-y-1 transition-all">
+                ยืนยันการรับเข้า
+            </button>
+        </div>
+    </form>
+</div>
+
+{{-- Lot Modal --}}
+<div id="lot-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center animate-in fade-in duration-200">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden">
+        <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <h3 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                <i class="fas fa-history text-blue-500"></i> ประวัติ Lot และวันหมดอายุเดิม
+            </h3>
+            <button type="button" onclick="closeLotModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div class="p-6">
+            <div class="overflow-y-auto max-h-60 rounded-xl border border-gray-100">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-gray-50 text-gray-600 font-bold">
+                        <tr>
+                            <th class="p-3">ชื่อล็อต (Lot)</th>
+                            <th class="p-3">วันหมดอายุ</th>
+                            <th class="p-3 text-right">จำนวนคงเหลือ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lot-history-table"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="p-4 bg-gray-50 text-right">
+            <button type="button" onclick="closeLotModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300 transition-all">ปิด</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentLotData = [];
+    const barcodeInput = document.getElementById('barcode_input');
+    const nameInput = document.getElementById('name_input');
+    const unitSelect = document.getElementById('unit_select');
+    const categorySelect = document.getElementById('category_select');
+    const companyInput = document.getElementById('company_input');
+    const expireInput = document.getElementById('expire_input');
+    const priceInput = document.getElementById('price_input'); 
+    const minInput = document.getElementById('min_input');
+    const maxInput = document.getElementById('max_input');
+    const spinner = document.getElementById('loading-spinner');
+    const statusMsg = document.getElementById('status-msg');
+    const stockPanel = document.getElementById('stock-info-panel');
+    const masterDisplay = document.getElementById('display_master');
+    const btnViewLots = document.getElementById('btn-view-lots');
+    const lotModal = document.getElementById('lot-modal');
+    const lotTableBody = document.getElementById('lot-history-table');
+    const receiveDateInput = document.getElementById('receive_date_input');
+    const lotNumberHidden = document.getElementById('lot_number_hidden');
+    const receiveForm = document.getElementById('receive-form');
+    const submitBtn = document.getElementById('submit-btn');
+
+    function setDefaultReceiveDate() {
+        if (receiveDateInput && !receiveDateInput.value) {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            receiveDateInput.value = `${yyyy}-${mm}-${dd}`;
+        }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        setDefaultReceiveDate();
+    });
+
+    // 🟢 ก่อนจะ Submit ฟอร์ม ตรวจสอบว่าปุ่มส่งจะทำงานได้ปกติ ไม่ล็อกค้างกรณี Validation ผิดพลาดจากเบราวเซอร์
+    if(receiveForm) {
+        receiveForm.addEventListener('submit', function(e) {
+            // เช็คความชัวร์ว่าเลือกหมวดหมู่หรือยัง ถ้าไม่มีค่าให้เตือน
+            if(!categorySelect.value) {
+                e.preventDefault();
+                Swal.fire('แจ้งเตือน', 'กรุณาเลือกหมวดหมู่ยาก่อนบันทึก', 'warning');
+                return false;
+            }
+            
+            if(submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerText = 'กำลังบันทึกข้อมูล...';
+                submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        });
+    }
+
+    barcodeInput.addEventListener('change', function() {
+        let rawBarcode = this.value.trim();
+        let cleanBarcode = rawBarcode.replace(/[^\w-]/g, ''); 
+        this.value = cleanBarcode;
+
+        if (!cleanBarcode) return;
+
+        spinner.classList.remove('hidden');
+        statusMsg.innerText = 'กำลังตรวจสอบข้อมูล...';
+        statusMsg.className = 'text-xs mt-1 block text-gray-500';
+
+        fetch("{{ url('/api/check-medicine') }}/" + encodeURIComponent(cleanBarcode))
+            .then(response => response.json())
+            .then(data => {
+                spinner.classList.add('hidden');
+                if (data.exists) {
+                    nameInput.value = data.name || '';
+                    companyInput.value = data.company_name || '';
+                    unitSelect.value = data.unit_name || '';
+                    
+                    // 🟢 แมตช์ค่าหมวดหมู่ให้ตรงกับ Select Option
+                    if(data.category) {
+                        categorySelect.value = data.category;
+                    }
+                    
+                    minInput.value = data.min_stock || '';
+                    maxInput.value = data.max_stock || '';
+                    priceInput.value = data.price_per_unit || ''; 
+                    
+                    btnViewLots.classList.remove('hidden');
+                    currentLotData = data.lots || []; 
+
+                    stockPanel.classList.remove('hidden');
+                    masterDisplay.innerText = Number(data.stock_master || 0).toLocaleString();
+                    
+                    statusMsg.innerText = 'พบข้อมูลยาเดิม: ' + data.name;
+                    statusMsg.className = 'text-xs mt-1 block text-green-600 font-bold';
+                    
+                    priceInput.focus(); 
+                } else {
+                    btnViewLots.classList.add('hidden');
+                    currentLotData = [];
+                    lotNumberHidden.value = '';
+                    stockPanel.classList.add('hidden');
+                    nameInput.value = '';
+                    unitSelect.value = ''; 
+                    categorySelect.value = '';
+                    companyInput.value = '';
+                    expireInput.value = '';
+                    priceInput.value = ''; 
+                    minInput.value = '';
+                    maxInput.value = '';
+                    statusMsg.innerText = 'ไม่พบข้อมูล (ยาใหม่)';
+                    statusMsg.className = 'text-xs mt-1 block text-orange-500 font-bold';
+                    nameInput.focus();
+                }
+            })
+            .catch(error => {
+                spinner.classList.add('hidden');
+                statusMsg.innerText = 'ข้อผิดพลาดในการเชื่อมต่อ API';
+                statusMsg.className = 'text-xs mt-1 block text-red-500 font-bold';
+            });
+    });
+
+    btnViewLots.addEventListener('click', function() {
+        lotTableBody.innerHTML = '';
+        if (!currentLotData || currentLotData.length === 0) {
+            lotTableBody.innerHTML = '<tr><td colspan="3" class="p-4 text-center text-gray-500">ไม่พบประวัติ Lot</td></tr>';
+        } else {
+            currentLotData.forEach(lot => {
+                const row = `<tr class="border-t border-gray-100 hover:bg-blue-50 cursor-pointer" onclick="fillLotInfo('${lot.lot_number || ''}', '${lot.expire_date || ''}')">
+                    <td class="p-3 font-mono text-gray-600">${lot.lot_number || '-'}</td>
+                    <td class="p-3 font-medium">${lot.expire_date || '-'}</td>
+                    <td class="p-3 text-right font-bold text-blue-600">${Number(lot.quantity || 0).toLocaleString()}</td>
+                </tr>`;
+                lotTableBody.innerHTML += row;
+            });
+        }
+        lotModal.classList.remove('hidden');
+    });
+
+    function fillLotInfo(lotNumber, expireDate) {
+        if(expireInput) expireInput.value = expireDate;
+        if(lotNumberHidden) lotNumberHidden.value = lotNumber;
+        closeLotModal();
+        statusMsg.innerText = 'เลือกล็อตเดิมสำเร็จ: ' + lotNumber;
+        statusMsg.className = 'text-xs mt-1 block text-blue-600 font-bold';
+    }
+
+    function closeLotModal() {
+        lotModal.classList.add('hidden');
+    }
+
+    barcodeInput.addEventListener('keypress', (e) => { 
+        if(e.key === 'Enter') { 
+            e.preventDefault(); 
+            barcodeInput.blur(); 
+        } 
+    });
+</script>
+
+@if(session('success'))
+<script>
+    Swal.fire({
+        title: 'บันทึกสำเร็จ!',
+        text: "{!! session('success') !!}",
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: {
+            popup: 'rounded-[2.5rem]',
+        }
+    });
+
+    // ล้างค่าฟอร์มด้วยวิธีที่ปลอดภัย
+    document.getElementById('receive-form').reset();
+    document.getElementById('lot_number_hidden').value = '';
+    document.getElementById('display_master').innerText = '0';
+    document.getElementById('stock-info-panel').classList.add('hidden');
+    document.getElementById('btn-view-lots').classList.add('hidden');
+    document.getElementById('status-msg').innerText = '';
+    
+    setTimeout(() => {
+        setDefaultReceiveDate();
+        document.getElementById('barcode_input').focus();
+    }, 100);
+</script>
+@endif
+@endsection
